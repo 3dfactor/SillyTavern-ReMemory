@@ -1,7 +1,8 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { commonEnumProviders } from '../../../../slash-commands/SlashCommandCommonEnumsProvider.js';
 import { enumTypes, SlashCommandEnumValue } from "../../../../slash-commands/SlashCommandEnumValue.js";
-import { endScene, logMessage, rememberEvent } from "./memories.js";
+import { getActiveMemoryBooks, endScene, logMessage, rememberEvent, fadeMemories } from "./memories.js";
+import { debug } from "./logging.js";
 
 // it's not exported for me to use, rip
 const profilesProvider = () => [
@@ -22,6 +23,13 @@ function getMesFromInput(value) {
 	}
 }
 
+function profileIdFromName(profile_name) {
+	const profile = extension_settings.connectionManager.profiles.find(p => p.name == profile_name);
+	if (profile) return profile.id;
+	return '';
+}
+
+
 export function loadSlashCommands() {
 	const parser = getContext().SlashCommandParser;
 	const command = getContext().SlashCommand;
@@ -34,6 +42,9 @@ export function loadSlashCommands() {
 		callback: (args, value) => {
 			const message = getMesFromInput(value);
 			if (message.length) {
+				if (args.profile !== undefined) {
+					args.profile = profileIdFromName(args.profile);
+				}
 				rememberEvent(message, args);
 			}
 		},
@@ -106,6 +117,9 @@ export function loadSlashCommands() {
 		callback: (args, value) => {
 			const message = getMesFromInput(value);
 			if (message) {
+				if (args.profile !== undefined) {
+					args.profile = profileIdFromName(args.profile);
+				}
 				endScene(message, args);
 			}
 		},
@@ -150,4 +164,30 @@ export function loadSlashCommands() {
 		],
 		helpString: 'Marks the message as a scene endpoint and generates a summary from the previous endpoint. Defaults to the most recent message if no ID is provided.',
 	}));
+
+	parser.addCommandObject(command.fromProps({
+		name: 'memory-fade',
+		callback: (args, value) => {
+			if (!value.length) {
+				debug('fading all active memory books');
+				return fadeMemories();
+			}
+			const memorable = getActiveMemoryBooks();
+			if (Object.keys(memorable).includes(value)) {
+				debug('fading memories for',value);
+				fadeMemories(value);
+			} else {
+				toastr.error(`No memory book available for ${value}.`, "ReMemory");
+			}
+		},
+		unnamedArgumentList: [
+			commandArg.fromProps({
+				description: 'specific target to fade memories for',
+				isRequired: false,
+				enumProvider: () => Object.keys(getActiveMemoryBooks()).map(charname => new SlashCommandEnumValue(charname)),
+			}),
+		],
+		helpString: "Reduces trigger % on all of the pop-up memories for the current chat/characters. If a specific target name is given, only that target's memories will fade.",
+	}));
+
 }
